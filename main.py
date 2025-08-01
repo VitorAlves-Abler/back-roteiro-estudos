@@ -35,7 +35,7 @@ class SimpleRoteiroOutput(BaseModel):
 async def read_root():
     return {"message": "Bem-vindo ao gerador de roteiros de estudo com IA!"}
 
-@app.post("/gerar_roteiro/", response_model=SimpleRoteiroOutput)
+@app.post("/gerar_roteiro", response_model=SimpleRoteiroOutput)
 async def gerar_roteiro(input_data: StudyTopic):
     """
     Endpoint que recebe um tema de estudo e retorna um roteiro gerado por IA.
