@@ -5,28 +5,38 @@ import os
 from dotenv import load_dotenv
 import google.generativeai as genai
 
-# Carrega as variáveis de ambiente do arquivo .env
-# Isso é seguro no Vercel pois as variáveis de ambiente são injetadas
+# --- NOVO: Variável global para armazenar a instância do modelo, para cache ---
+_cached_model = None
+
+# Carrega as variáveis de ambiente
 load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not API_KEY:
-    # Levanta o erro se a chave não estiver configurada no Vercel
     raise ValueError("A variável de ambiente GEMINI_API_KEY não está configurada.")
 
-# --- NOVO: Configura o genai globalmente, mas não inicializa o modelo ---
+# Configura o genai globalmente
 genai.configure(api_key=API_KEY)
 
-# Cria a instância da aplicação FastAPI
 app = FastAPI()
 
-# Modelos Pydantic (permanecem os mesmos)
 class StudyTopic(BaseModel):
     topic: str
 
 class SimpleRoteiroOutput(BaseModel):
     tema_solicitado: str
     roteiro: str
+
+def get_model():
+    """
+    Função de inicialização preguiçosa (lazy initialization) do modelo.
+    Inicializa o modelo apenas na primeira chamada e o reutiliza nas subsequentes.
+    Isso é seguro para ambientes serverless.
+    """
+    global _cached_model
+    if _cached_model is None:
+        _cached_model = genai.GenerativeModel('gemini-2.5-flash')
+    return _cached_model
 
 @app.get("/")
 async def read_root():
@@ -36,10 +46,9 @@ async def read_root():
 async def gerar_roteiro(input_data: StudyTopic):
     topic = input_data.topic
 
-    # --- NOVO: Inicialização do modelo dentro da função (ou de forma lazy) ---
     try:
-        # A Vercel reusa o processo, então esta linha será muito rápida após a primeira chamada
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Usa a função para obter o modelo, garantindo que ele seja inicializado corretamente
+        model = get_model()
     except Exception as e:
         print(f"Erro ao inicializar o modelo da IA: {e}")
         raise HTTPException(
