@@ -13,7 +13,6 @@ __pycache__/
 *.sublime-project
 *.sublime-workspace
 .env
-.env.*
 .flaskenv
 /dist/
 /build/
