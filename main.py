@@ -7,7 +7,8 @@ import google.generativeai as genai
 import asyncio
 
 # Carrega as variáveis de ambiente do arquivo .env
-load_dotenv()
+if os.path.exists(".env"):
+    load_dotenv()
 
 # Pega a chave de API da variável de ambiente
 API_KEY = os.getenv("GEMINI_API_KEY")
