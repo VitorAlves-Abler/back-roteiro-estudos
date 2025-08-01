@@ -4,24 +4,23 @@ from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
 import google.generativeai as genai
-import asyncio
 
 # Carrega as variáveis de ambiente do arquivo .env
+# Isso é seguro no Vercel pois as variáveis de ambiente são injetadas
 load_dotenv()
-
-# Pega a chave de API da variável de ambiente
 API_KEY = os.getenv("GEMINI_API_KEY")
+
 if not API_KEY:
+    # Levanta o erro se a chave não estiver configurada no Vercel
     raise ValueError("A variável de ambiente GEMINI_API_KEY não está configurada.")
 
-# Configura a biblioteca do Google AI
+# --- NOVO: Configura o genai globalmente, mas não inicializa o modelo ---
 genai.configure(api_key=API_KEY)
 
-# Inicializa o modelo Gemini
-model = genai.GenerativeModel('gemini-2.5-flash')
-
+# Cria a instância da aplicação FastAPI
 app = FastAPI()
 
+# Modelos Pydantic (permanecem os mesmos)
 class StudyTopic(BaseModel):
     topic: str
 
@@ -35,10 +34,18 @@ async def read_root():
 
 @app.post("/gerar_roteiro/", response_model=SimpleRoteiroOutput)
 async def gerar_roteiro(input_data: StudyTopic):
-    """
-    Endpoint que recebe um tema de estudo e retorna um roteiro gerado por IA.
-    """
     topic = input_data.topic
+
+    # --- NOVO: Inicialização do modelo dentro da função (ou de forma lazy) ---
+    try:
+        # A Vercel reusa o processo, então esta linha será muito rápida após a primeira chamada
+        model = genai.GenerativeModel('gemini-2.5-flash')
+    except Exception as e:
+        print(f"Erro ao inicializar o modelo da IA: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"O modelo de IA não pode ser inicializado. Erro: {e}"
+        )
 
     prompt = f"""
     Crie um roteiro de estudo abrangente e detalhado para o seguinte tema: "{topic}".
@@ -51,28 +58,15 @@ async def gerar_roteiro(input_data: StudyTopic):
     generated_script = ""
 
     try:
-        # Define um tempo limite para a requisição à API do Gemini
-        # Se a requisição demorar mais que isso, um TimeoutError será levantado
-        response = await asyncio.wait_for(
-            model.generate_content_async(prompt),
-            timeout=60.0
-        )
-        
-        # Acessa o texto gerado pela IA.
+        response = await model.generate_content_async(prompt)
         generated_script = response.text
     
-    except asyncio.TimeoutError: # <<< TRATAMENTO DE ERRO DE TIMEOUT
-        print(f"TIMEOUT: A requisição ao Gemini demorou demais para '{topic}'.")
-        raise HTTPException(
-            status_code=504, # 504 Gateway Timeout
-            detail=f"O serviço de IA demorou muito para responder para o tema '{topic}'. Por favor, tente novamente."
-        )
     except Exception as e:
-        print(f"Erro ao chamar a API do Gemini para '{topic}': {e}")
-        # Retorna uma mensagem de erro
+        print(f"Erro ao chamar a API do Gemini: {e}")
+        error_detail = str(e) if str(e) else "Erro desconhecido da API de IA."
         raise HTTPException(
-            status_code=500, # 500 Internal Server Error
-            detail=f"Não foi possível gerar o roteiro para '{topic}' devido a um erro no serviço de IA. Detalhes: {e}"
+            status_code=500,
+            detail=f"Não foi possível gerar o roteiro para '{topic}'. Erro: {error_detail}"
         )
 
     return {"tema_solicitado": topic, "roteiro": generated_script}
